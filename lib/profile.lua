@@ -196,32 +196,38 @@ function M.install_and_get_store_path(flake_ref)
   local env_prefix = platform.get_env_prefix()
   local impure_flag = platform.get_impure_flag()
 
-  -- Build using nix build first to get the store path directly
-  -- This is more reliable than parsing nix profile list output
+  -- Use a temporary result link to guarantee we get the actual realized store path
+  -- This is more reliable than --print-out-paths which may print paths before they're accessible
+  local tmp_link = os.tmpname() .. "-nix-result"
   local build_cmdline = string.format(
-    '%snix build %s--no-link --print-out-paths "%s"',
-    env_prefix, impure_flag, flake_ref
+    '%snix build %s--out-link "%s" "%s" 2>&1',
+    env_prefix, impure_flag, tmp_link, flake_ref
   )
 
   logger.step("Building " .. flake_ref .. "...")
   logger.debug("Build command: " .. build_cmdline)
 
   local build_ok, build_result = shell.try_exec(build_cmdline)
-  if not build_ok or not build_result or build_result == "" then
+  if not build_ok then
+    -- Clean up temp link on failure
+    shell.try_exec('rm -f "%s"', tmp_link)
     error("Failed to build package: " .. tostring(build_result or "unknown error"))
   end
 
-  -- Parse outputs from nix build
-  local outputs = {}
-  for path in build_result:gmatch("[^\n]+") do
-    if path:match("^/nix/store/") then
-      table.insert(outputs, path)
-    end
+  -- Read the store path from the result symlink - this guarantees the path exists
+  local readlink_ok, store_path = shell.try_exec('readlink "%s"', tmp_link)
+  if not readlink_ok or not store_path or store_path == "" then
+    shell.try_exec('rm -f "%s"', tmp_link)
+    error("Failed to read store path from result link")
   end
 
-  if #outputs == 0 then
-    error("No outputs returned by nix build for: " .. flake_ref)
-  end
+  -- Trim whitespace from store path
+  store_path = store_path:gsub("^%s+", ""):gsub("%s+$", "")
+
+  -- Clean up the temporary result link
+  shell.try_exec('rm -f "%s"', tmp_link)
+
+  local outputs = { store_path }
 
   -- Now install to profile for proper registration (uses default profile)
   local install_cmdline = string.format(
