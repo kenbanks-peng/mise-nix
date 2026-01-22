@@ -64,28 +64,15 @@ local profile = require("profile")
 
 describe("Profile module", function()
   describe("get_profile_path", function()
-    it("should return path under XDG_STATE_HOME if set", function()
+    it("should return the default nix profile path", function()
       local original = os.getenv
       os.getenv = function(name)
-        if name == "XDG_STATE_HOME" then return "/custom/state" end
         if name == "HOME" then return "/home/user" end
         return nil
       end
       local path = profile.get_profile_path()
       os.getenv = original
-      assert.equal("/custom/state/mise-nix/profile", path)
-    end)
-
-    it("should return path under HOME/.local/state if XDG not set", function()
-      local original = os.getenv
-      os.getenv = function(name)
-        if name == "XDG_STATE_HOME" then return nil end
-        if name == "HOME" then return "/home/user" end
-        return nil
-      end
-      local path = profile.get_profile_path()
-      os.getenv = original
-      assert.equal("/home/user/.local/state/mise-nix/profile", path)
+      assert.equal("/home/user/.nix-profile", path)
     end)
   end)
 
@@ -144,6 +131,54 @@ describe("Profile module", function()
     it("should return false for non-existent entry", function()
       local result = profile.has_entry("mise.nonexistent.1.0.0")
       assert.is_false(result)
+    end)
+  end)
+
+  describe("has_entry_for_tool", function()
+    it("should return true when tool exists in profile", function()
+      local original_try_exec = package.loaded["shell"].try_exec
+      package.loaded["shell"].try_exec = function(cmd, ...)
+        if cmd:match("test %-L") then
+          return true, ""
+        elseif cmd:match("nix profile list") then
+          return true, '{"elements": {"hello": {"storePaths": ["/nix/store/abc-hello"]}, "hello-1": {"storePaths": ["/nix/store/def-hello"]}}}'
+        end
+        return original_try_exec(cmd, ...)
+      end
+
+      local result = profile.has_entry_for_tool("hello")
+      package.loaded["shell"].try_exec = original_try_exec
+
+      assert.is_true(result)
+    end)
+
+    it("should return false when tool does not exist", function()
+      local original_try_exec = package.loaded["shell"].try_exec
+      package.loaded["shell"].try_exec = function(cmd, ...)
+        if cmd:match("test %-L") then
+          return true, ""
+        elseif cmd:match("nix profile list") then
+          return true, '{"elements": {"other-tool": {"storePaths": ["/nix/store/xyz"]}}}'
+        end
+        return original_try_exec(cmd, ...)
+      end
+
+      local result = profile.has_entry_for_tool("hello")
+      package.loaded["shell"].try_exec = original_try_exec
+
+      assert.is_false(result)
+    end)
+  end)
+
+  describe("remove_by_tool", function()
+    it("should return true on successful removal", function()
+      local result = profile.remove_by_tool("hello")
+      assert.is_true(result)
+    end)
+
+    it("should handle tool names with special regex characters", function()
+      local result = profile.remove_by_tool("c++")
+      assert.is_true(result)
     end)
   end)
 end)

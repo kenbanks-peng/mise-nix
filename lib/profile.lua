@@ -7,10 +7,9 @@ local platform = require("platform")
 
 local M = {}
 
--- Get the profile path for mise-nix managed packages
+-- Get the default nix profile path
 function M.get_profile_path()
-  local state_dir = os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state")
-  return state_dir .. "/mise-nix/profile"
+  return os.getenv("HOME") .. "/.nix-profile"
 end
 
 -- Generate a sanitized entry name for a tool@version
@@ -21,28 +20,16 @@ function M.get_entry_name(tool, version)
   return "mise." .. safe_tool .. "." .. safe_version
 end
 
--- Ensure profile directory exists
-function M.ensure_profile_dir()
-  local profile_path = M.get_profile_path()
-  local profile_dir = profile_path:match("^(.+)/[^/]+$")
-  if profile_dir then
-    shell.try_exec('mkdir -p "%s"', profile_dir)
-  end
-end
-
 -- Install a package to the profile
 -- Returns the store paths from the installation
 function M.install(flake_ref, entry_name)
-  M.ensure_profile_dir()
-  local profile_path = M.get_profile_path()
-
   local env_prefix = platform.get_env_prefix()
   local impure_flag = platform.get_impure_flag()
 
-  -- Use nix profile install with the profile path
+  -- Use nix profile install (uses default profile)
   local cmdline = string.format(
-    '%snix profile install %s--profile "%s" "%s"',
-    env_prefix, impure_flag, profile_path, flake_ref
+    '%snix profile install %s"%s"',
+    env_prefix, impure_flag, flake_ref
   )
 
   logger.step("Installing " .. flake_ref .. " to profile...")
@@ -56,7 +43,7 @@ function M.install(flake_ref, entry_name)
   return true
 end
 
--- Remove a package from the profile by entry pattern
+-- Remove a package from the profile by entry pattern (legacy - use remove_by_tool instead)
 function M.remove(entry_pattern)
   local profile_path = M.get_profile_path()
 
@@ -67,16 +54,50 @@ function M.remove(entry_pattern)
     return true
   end
 
-  -- Use nix profile remove with a regex pattern
+  -- Use nix profile remove with a regex pattern (uses default profile)
   local cmdline = string.format(
-    'nix profile remove --profile "%s" ".*%s.*" 2>&1 || true',
-    profile_path, entry_pattern:gsub("%.", "\\.")
+    'nix profile remove ".*%s.*" 2>&1 || true',
+    entry_pattern:gsub("%.", "\\.")
   )
 
   logger.step("Removing from profile: " .. entry_pattern)
   logger.debug("Command: " .. cmdline)
 
   shell.try_exec(cmdline)
+  return true
+end
+
+-- Remove a package from the profile by tool name
+-- This matches the actual entry names nix uses (e.g., "hello", "hello-1")
+function M.remove_by_tool(tool_name)
+  local profile_path = M.get_profile_path()
+
+  -- First check if the profile exists
+  local profile_exists = shell.try_exec('test -L "%s"', profile_path)
+  if not profile_exists then
+    logger.debug("Profile does not exist, nothing to remove")
+    return true
+  end
+
+  -- Nix profile entry names are based on the attribute path's last component
+  -- e.g., "hello", and duplicates become "hello-1", "hello-2", etc.
+  -- Use regex to match: ^hello$ or ^hello-[0-9]+$
+  local escaped_name = tool_name:gsub("([%.%+%[%]%(%)%$%^])", "\\%1")
+  local pattern = string.format("^%s(-[0-9]+)?$", escaped_name)
+
+  -- Use default profile
+  local cmdline = string.format(
+    'nix profile remove "%s" 2>&1',
+    pattern
+  )
+
+  logger.step("Removing from profile: " .. tool_name)
+  logger.debug("Command: " .. cmdline)
+
+  local ok, result = shell.try_exec(cmdline)
+  if not ok then
+    logger.debug("Remove result: " .. (result or ""))
+  end
   return true
 end
 
@@ -91,7 +112,8 @@ function M.list()
     return {}
   end
 
-  local cmdline = string.format('nix profile list --json --profile "%s" 2>/dev/null', profile_path)
+  -- Use default profile
+  local cmdline = 'nix profile list --json 2>/dev/null'
   local ok, result = shell.try_exec(cmdline)
 
   if not ok or not result or result == "" then
@@ -114,9 +136,8 @@ end
 -- Get store path for the most recently installed package
 -- After nix profile install, we need to find the store path for our package
 function M.get_store_path_for_flake(flake_ref)
-  local profile_path = M.get_profile_path()
-
-  local cmdline = string.format('nix profile list --json --profile "%s" 2>/dev/null', profile_path)
+  -- Use default profile
+  local cmdline = 'nix profile list --json 2>/dev/null'
   local ok, result = shell.try_exec(cmdline)
 
   if not ok or not result or result == "" then
@@ -146,7 +167,7 @@ function M.get_store_path_for_flake(flake_ref)
   return nil
 end
 
--- Check if an entry pattern exists in the profile
+-- Check if an entry pattern exists in the profile (legacy - use has_entry_for_tool instead)
 function M.has_entry(entry_pattern)
   local _, raw_json = M.list()
   if not raw_json then return false end
@@ -155,12 +176,23 @@ function M.has_entry(entry_pattern)
   return raw_json:match(entry_pattern:gsub("%.", "%%.")) ~= nil
 end
 
+-- Check if an entry for the tool exists in the profile
+-- This matches the actual entry names nix uses (e.g., "hello", "hello-1")
+function M.has_entry_for_tool(tool_name)
+  local _, raw_json = M.list()
+  if not raw_json then return false end
+
+  -- Check if the tool name appears as a key in the elements
+  -- Matches "hello": or "hello-1": etc.
+  local escaped_name = tool_name:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+  local pattern = '"' .. escaped_name .. '":'
+  local pattern_numbered = '"' .. escaped_name .. '%-[0-9]+":'
+  return raw_json:match(pattern) ~= nil or raw_json:match(pattern_numbered) ~= nil
+end
+
 -- Get store path by building with nix profile install and reading back
 -- This is the main function used during installation
 function M.install_and_get_store_path(flake_ref)
-  M.ensure_profile_dir()
-  local profile_path = M.get_profile_path()
-
   local env_prefix = platform.get_env_prefix()
   local impure_flag = platform.get_impure_flag()
 
@@ -191,10 +223,10 @@ function M.install_and_get_store_path(flake_ref)
     error("No outputs returned by nix build for: " .. flake_ref)
   end
 
-  -- Now install to profile for proper registration
+  -- Now install to profile for proper registration (uses default profile)
   local install_cmdline = string.format(
-    '%snix profile install %s--profile "%s" "%s" 2>&1',
-    env_prefix, impure_flag, profile_path, flake_ref
+    '%snix profile install %s"%s" 2>&1',
+    env_prefix, impure_flag, flake_ref
   )
 
   logger.step("Registering in profile...")

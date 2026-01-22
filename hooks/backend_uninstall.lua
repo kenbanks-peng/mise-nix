@@ -23,17 +23,17 @@ function PLUGIN:BackendUninstall(ctx)
   end
 
   -- Remove from nix profile
-  local entry_name = profile.get_entry_name(tool, version)
+  -- Use the tool name directly since nix profile names entries based on the attribute path
   logger.step("Removing " .. tool .. "@" .. version .. " from nix profile...")
 
-  if profile.has_entry(entry_name) then
-    local ok = profile.remove(entry_name)
+  if profile.has_entry_for_tool(tool) then
+    local ok = profile.remove_by_tool(tool)
     if ok then
-      logger.done("Removed from nix profile: " .. entry_name)
+      logger.done("Removed from nix profile: " .. tool)
     else
-      logger.warn("Could not remove from nix profile: " .. entry_name)
+      logger.warn("Could not remove from nix profile: " .. tool)
     end
   else
-    logger.debug("Entry not found in profile: " .. entry_name)
+    logger.debug("Entry not found in profile for tool: " .. tool)
   end
 end
