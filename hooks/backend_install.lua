@@ -7,8 +7,10 @@ local jetbrains = require("jetbrains")
 local flake = require("flake")
 local install = require("install")
 local vsix = require("vsix")
+local logger = require("logger")
 
 function PLUGIN:BackendInstall(ctx)
+  logger.info("HOOK CALLED: backend_install.lua - BackendInstall()")
   local tool = ctx.tool
   local requested_version = ctx.version
   local install_path = ctx.install_path

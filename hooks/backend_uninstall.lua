@@ -9,6 +9,7 @@ local cmd = require("cmd")
 
 -- Uninstall a package: removes from nix first, then from mise
 function PLUGIN:Uninstall(tool, version)
+  logger.info("HOOK CALLED: backend_uninstall.lua - Uninstall()")
   -- Skip nix profile removal for VSCode extensions (they don't use profile registration)
   if not vscode.is_extension(tool) and not jetbrains.is_plugin(tool) then
     -- Step 1: Remove from nix profile first
