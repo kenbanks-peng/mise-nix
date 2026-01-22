@@ -155,7 +155,7 @@ function M.install_plugin(plugin_path, plugin_info)
           table.insert(jar_list, jar_name)
         else
           logger.fail("Failed to copy JAR: " .. jar_name)
-          logger.debug("Copy error: " .. (copy_result or "unknown error"))
+          logger.debug("Copy error: " .. tostring(copy_result or "unknown error"))
           return false, copy_result
         end
       end
@@ -192,7 +192,7 @@ function M.install_plugin(plugin_path, plugin_info)
     return true, "installed"
   else
     logger.fail("JetBrains plugin installation failed")
-    logger.debug("Copy error: " .. (copy_result or "unknown error"))
+    logger.debug("Copy error: " .. tostring(copy_result or "unknown error"))
     -- Clean up failed installation
     shell.try_exec('rm -rf "%s"', plugin_install_dir)
     return false, copy_result

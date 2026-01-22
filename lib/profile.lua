@@ -37,7 +37,7 @@ function M.install(flake_ref, entry_name)
 
   local ok, result = shell.try_exec(cmdline)
   if not ok then
-    error("Failed to install package to profile: " .. (result or "unknown error"))
+    error("Failed to install package to profile: " .. tostring(result or "unknown error"))
   end
 
   return true
@@ -96,7 +96,7 @@ function M.remove_by_tool(tool_name)
 
   local ok, result = shell.try_exec(cmdline)
   if not ok then
-    logger.debug("Remove result: " .. (result or ""))
+    logger.debug("Remove result: " .. tostring(result or ""))
   end
   return true
 end
@@ -208,7 +208,7 @@ function M.install_and_get_store_path(flake_ref)
 
   local build_ok, build_result = shell.try_exec(build_cmdline)
   if not build_ok or not build_result or build_result == "" then
-    error("Failed to build package: " .. (build_result or "unknown error"))
+    error("Failed to build package: " .. tostring(build_result or "unknown error"))
   end
 
   -- Parse outputs from nix build
@@ -235,7 +235,7 @@ function M.install_and_get_store_path(flake_ref)
   local install_ok, install_result = shell.try_exec(install_cmdline)
   if not install_ok then
     -- Installation might fail if already installed, which is fine
-    logger.debug("Profile install result: " .. (install_result or ""))
+    logger.debug("Profile install result: " .. tostring(install_result or ""))
   end
 
   return outputs
