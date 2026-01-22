@@ -126,7 +126,7 @@ function M.choose_store_path_with_bin(outputs)
 
   for _, path in ipairs(outputs) do
     local bin_path = path .. "/bin"
-    local has_bin = shell.exec("test -d '" .. bin_path .. "' && echo yes || echo no"):match("yes") ~= nil
+    local has_bin = shell.exec("[ -d '" .. bin_path .. "' ] && echo yes || echo no"):match("yes") ~= nil
     local bin_count = 0
 
     if has_bin then
@@ -161,14 +161,14 @@ end
 -- Verify that a built package path exists and is accessible
 function M.verify_build(chosen_path, tool)
   -- Check if the path actually exists and is accessible
-  local exists = shell.exec("test -e '" .. chosen_path .. "' && echo yes || echo no"):match("yes")
+  local exists = shell.exec("[ -e '" .. chosen_path .. "' ] && echo yes || echo no"):match("yes")
   if not exists then
     error("Built package path does not exist: " .. chosen_path)
   end
 
   -- Optional: verify expected binaries exist
   local bin_path = chosen_path .. "/bin"
-  local has_bin_dir = shell.exec("test -d '" .. bin_path .. "' && echo yes || echo no"):match("yes")
+  local has_bin_dir = shell.exec("[ -d '" .. bin_path .. "' ] && echo yes || echo no"):match("yes")
   if has_bin_dir then
     local binaries = shell.exec("ls -1 '" .. bin_path .. "' 2>/dev/null")
     if binaries and binaries ~= "" then

@@ -139,7 +139,7 @@ function M.create_vsix_manifest(temp_dir, ext_id, ext_path)
     -- Look for common icon files
     local common_icons = {"icon.png", "images/icon.png", "media/icon.png", "assets/icon.png"}
     for _, icon_file in ipairs(common_icons) do
-      local ok, _ = shell.try_exec('test -f "%s"', ext_path .. "/" .. icon_file)
+      local ok, _ = shell.try_exec('[ -f "%s" ]', ext_path .. "/" .. icon_file)
       if ok then
         icon_path = "extension/" .. icon_file
         break
@@ -150,7 +150,7 @@ function M.create_vsix_manifest(temp_dir, ext_id, ext_path)
   -- Look for license files
   local common_licenses = {"LICENSE", "LICENSE.txt", "LICENSE.md", "license", "license.txt", "license.md"}
   for _, license_file in ipairs(common_licenses) do
-    local ok, _ = shell.try_exec('test -f "%s"', ext_path .. "/" .. license_file)
+    local ok, _ = shell.try_exec('[ -f "%s" ]', ext_path .. "/" .. license_file)
     if ok then
       license_path = "extension/" .. license_file
       break
@@ -205,8 +205,8 @@ function M.create_vsix_manifest(temp_dir, ext_id, ext_path)
     tags, categories, package_data.engine,
     license_path ~= "" and string.format('\n\t\t\t<License>%s</License>', license_path) or "",
     icon_path ~= "" and string.format('\n\t\t\t<Icon>%s</Icon>', icon_path) or "",
-    (function() local ok, _ = shell.try_exec('test -f "%s"', ext_path .. "/README.md"); return ok end)() and '\n\t\t\t<Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" />' or "",
-    (function() local ok, _ = shell.try_exec('test -f "%s"', ext_path .. "/CHANGELOG.md"); return ok end)() and '\n\t\t\t<Asset Type="Microsoft.VisualStudio.Services.Content.Changelog" Path="extension/CHANGELOG.md" Addressable="true" />' or "",
+    (function() local ok, _ = shell.try_exec('[ -f "%s" ]', ext_path .. "/README.md"); return ok end)() and '\n\t\t\t<Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" />' or "",
+    (function() local ok, _ = shell.try_exec('[ -f "%s" ]', ext_path .. "/CHANGELOG.md"); return ok end)() and '\n\t\t\t<Asset Type="Microsoft.VisualStudio.Services.Content.Changelog" Path="extension/CHANGELOG.md" Addressable="true" />' or "",
     license_path ~= "" and string.format('\n\t\t\t<Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="%s" Addressable="true" />', license_path) or ""
   )
   
@@ -226,7 +226,7 @@ function M.create_and_install_vsix(ext_id, nix_store_path, tool_name)
 
   -- First try the exact extension ID
   local test_path = nix_store_path .. "/share/vscode/extensions/" .. ext_id
-  if shell.try_exec('test -d "%s"', test_path) then
+  if shell.try_exec('[ -d "%s" ]', test_path) then
     ext_path = test_path
   else
     -- Try to find the actual directory name (case-insensitive)
@@ -259,7 +259,7 @@ function M.create_and_install_vsix(ext_id, nix_store_path, tool_name)
   end
 
   -- Check if package.json exists directly in the extension path
-  local pkg_check = shell.try_exec('test -f "%s/package.json" && echo "package.json found at root" || echo "package.json NOT at root"', ext_path)
+  local pkg_check = shell.try_exec('[ -f "%s/package.json" ] && echo "package.json found at root" || echo "package.json NOT at root"', ext_path)
   logger.debug("Package.json check: " .. tostring(pkg_check))
 
   -- Create VSIX file with proper structure using temporary directory
@@ -289,7 +289,7 @@ function M.create_and_install_vsix(ext_id, nix_store_path, tool_name)
       local temp_contents = shell.try_exec('ls -la "%s/extension/" 2>&1 | head -5', temp_dir)
       logger.debug("Temp extension directory contents: " .. tostring(temp_contents))
 
-      local pkg_in_temp = shell.try_exec('test -f "%s/extension/package.json" && echo "package.json exists in temp" || echo "package.json MISSING in temp"', temp_dir)
+      local pkg_in_temp = shell.try_exec('[ -f "%s/extension/package.json" ] && echo "package.json exists in temp" || echo "package.json MISSING in temp"', temp_dir)
       logger.debug("Package.json in temp: " .. tostring(pkg_in_temp))
 
       -- Create required VSIX manifest files

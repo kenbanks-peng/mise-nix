@@ -48,7 +48,7 @@ function M.remove(entry_pattern)
   local profile_path = M.get_profile_path()
 
   -- First check if the profile exists
-  local profile_exists = shell.try_exec('test -L "%s"', profile_path)
+  local profile_exists = shell.try_exec('[ -L "%s" ]', profile_path)
   if not profile_exists then
     logger.debug("Profile does not exist, nothing to remove")
     return true
@@ -73,7 +73,7 @@ function M.remove_by_tool(tool_name)
   local profile_path = M.get_profile_path()
 
   -- First check if the profile exists
-  local profile_exists = shell.try_exec('test -L "%s"', profile_path)
+  local profile_exists = shell.try_exec('[ -L "%s" ]', profile_path)
   if not profile_exists then
     logger.debug("Profile does not exist, nothing to remove")
     return true
@@ -107,7 +107,7 @@ function M.list()
   local profile_path = M.get_profile_path()
 
   -- Check if profile exists
-  local profile_exists = shell.try_exec('test -L "%s"', profile_path)
+  local profile_exists = shell.try_exec('[ -L "%s" ]', profile_path)
   if not profile_exists then
     return {}
   end

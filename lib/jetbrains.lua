@@ -145,7 +145,7 @@ function M.install_plugin(plugin_path, plugin_info)
       local target_path = plugins_dir .. "/" .. jar_name
 
       -- Check if JAR is already installed
-      if shell.try_exec('test -f "%s"', target_path) then
+      if shell.try_exec('[ -f "%s" ]', target_path) then
         logger.info("JetBrains plugin JAR already installed: " .. jar_name)
         table.insert(jar_list, jar_name)
       else
@@ -174,7 +174,7 @@ function M.install_plugin(plugin_path, plugin_info)
   local plugin_install_dir = plugins_dir .. "/" .. plugin_info.plugin_id
 
   -- Check if plugin is already installed
-  if shell.try_exec('test -d "%s"', plugin_install_dir) then
+  if shell.try_exec('[ -d "%s" ]', plugin_install_dir) then
     logger.info("JetBrains plugin already installed: " .. plugin_info.plugin_id)
     return true, "already_installed"
   end
@@ -213,10 +213,10 @@ function M.install_from_nix_store(plugin_info, nix_store_path, tool_name)
   }
 
   for _, path in ipairs(possible_paths) do
-    if shell.try_exec('test -d "%s"', path) then
+    if shell.try_exec('[ -d "%s" ]', path) then
       -- Check if this directory contains plugin files (JAR files or plugin.xml)
       local has_jar = shell.try_exec('find "%s" -name "*.jar" | head -1', path)
-      local has_plugin_xml = shell.try_exec('test -f "%s/META-INF/plugin.xml"', path)
+      local has_plugin_xml = shell.try_exec('[ -f "%s/META-INF/plugin.xml" ]', path)
 
       if has_jar or has_plugin_xml then
         plugin_path = path
