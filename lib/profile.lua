@@ -287,7 +287,7 @@ function M._extract_store_path_for_url(json, url)
   return store_path
 end
 
--- Get store path by building with nix profile install and reading back
+-- Install to profile and get the store path
 -- This is the main function used during installation
 function M.install_and_get_store_path(flake_ref)
   -- Check if this flake reference is already installed in the profile
@@ -301,55 +301,28 @@ function M.install_and_get_store_path(flake_ref)
   local env_prefix = platform.get_env_prefix()
   local impure_flag = platform.get_impure_flag()
 
-  -- Use a temporary result link to guarantee we get the actual realized store path
-  -- This is more reliable than --print-out-paths which may print paths before they're accessible
-  local tmp_link = os.tmpname() .. "-nix-result"
-  local build_cmdline = string.format(
-    '%snix build %s--out-link "%s" "%s" 2>&1',
-    env_prefix, impure_flag, tmp_link, flake_ref
-  )
-
-  logger.step("Building " .. flake_ref .. "...")
-  logger.debug("Build command: " .. build_cmdline)
-
-  local build_ok, build_result = shell.try_exec(build_cmdline)
-  if not build_ok then
-    -- Clean up temp link on failure
-    shell.try_exec('rm -f "%s"', tmp_link)
-    error("Failed to build package: " .. tostring(build_result or "unknown error"))
-  end
-
-  -- Read the store path from the result symlink - this guarantees the path exists
-  local readlink_ok, store_path = shell.try_exec('readlink "%s"', tmp_link)
-  if not readlink_ok or not store_path or store_path == "" then
-    shell.try_exec('rm -f "%s"', tmp_link)
-    error("Failed to read store path from result link")
-  end
-
-  -- Trim whitespace from store path
-  store_path = store_path:gsub("^%s+", ""):gsub("%s+$", "")
-
-  -- Clean up the temporary result link
-  shell.try_exec('rm -f "%s"', tmp_link)
-
-  local outputs = { store_path }
-
-  -- Now install to profile for proper registration (uses default profile)
+  -- Install to profile (builds and registers in one step)
   local install_cmdline = string.format(
     '%snix profile install %s"%s" 2>&1',
     env_prefix, impure_flag, flake_ref
   )
 
-  logger.step("Registering in profile...")
+  logger.step("Installing " .. flake_ref .. "...")
   logger.debug("Install command: " .. install_cmdline)
 
   local install_ok, install_result = shell.try_exec(install_cmdline)
   if not install_ok then
-    -- Installation might fail if already installed, which is fine
-    logger.debug("Profile install result: " .. tostring(install_result or ""))
+    error("Failed to install package: " .. tostring(install_result or "unknown error"))
   end
 
-  return outputs
+  -- Get the store path from the profile
+  local store_path = M.get_installed_store_path(flake_ref)
+  if not store_path then
+    error("Package installed but store path not found in profile")
+  end
+
+  logger.debug("Store path: " .. store_path)
+  return { store_path }
 end
 
 return M
