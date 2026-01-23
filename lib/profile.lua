@@ -233,6 +233,8 @@ function M.get_installed_store_path(flake_ref)
 end
 
 -- Check if two flake references match (accounting for short vs full commit hashes)
+-- Note: nix profile stores originalUrl WITHOUT the #attr part, so we allow matching
+-- when one ref has an attribute and the other doesn't
 function M._flake_refs_match(ref1, ref2)
   -- Exact match
   if ref1 == ref2 then return true end
@@ -253,8 +255,8 @@ function M._flake_refs_match(ref1, ref2)
   -- URL bases must match
   if p1.url_base ~= p2.url_base then return false end
 
-  -- Attributes must match
-  if p1.attr ~= p2.attr then return false end
+  -- Attributes must match, unless one is empty (nix profile stores URL without #attr)
+  if p1.attr ~= "" and p2.attr ~= "" and p1.attr ~= p2.attr then return false end
 
   -- Revisions must match (one can be a prefix of the other for short hashes)
   if p1.rev and p2.rev then
