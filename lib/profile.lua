@@ -190,9 +190,114 @@ function M.has_entry_for_tool(tool_name)
   return raw_json:match(pattern) ~= nil or raw_json:match(pattern_numbered) ~= nil
 end
 
+-- Check if a flake reference is already installed in the profile
+-- Returns the store path if installed, nil otherwise
+function M.get_installed_store_path(flake_ref)
+  local _, raw_json = M.list()
+  if not raw_json then return nil end
+
+  -- Parse JSON to find matching flake reference
+  -- nix profile list --json includes "url" or "originalUrl" for each element
+  -- We check if our flake_ref matches (accounting for partial matches like short commit hashes)
+
+  -- Extract the attribute path from the flake_ref (e.g., "hello" from "github:NixOS/nixpkgs/abc#hello")
+  local attr = flake_ref:match("#([^#]+)$")
+
+  -- Try to find an element with matching URL/originalUrl
+  -- The JSON structure is: {"elements": {"name": {"url": "...", "storePaths": [...]}}}
+
+  -- Look for originalUrl matches first (more reliable), then url
+  for url_field in raw_json:gmatch('"originalUrl"%s*:%s*"([^"]+)"') do
+    if M._flake_refs_match(flake_ref, url_field) then
+      -- Found a match, extract the corresponding store path
+      -- We need to find the store path in the same element block
+      -- For simplicity, we'll search for storePaths near this URL
+      local store_path = M._extract_store_path_for_url(raw_json, url_field)
+      if store_path then
+        return store_path
+      end
+    end
+  end
+
+  -- Also check "url" field
+  for url_field in raw_json:gmatch('"url"%s*:%s*"([^"]+)"') do
+    if M._flake_refs_match(flake_ref, url_field) then
+      local store_path = M._extract_store_path_for_url(raw_json, url_field)
+      if store_path then
+        return store_path
+      end
+    end
+  end
+
+  return nil
+end
+
+-- Check if two flake references match (accounting for short vs full commit hashes)
+function M._flake_refs_match(ref1, ref2)
+  -- Exact match
+  if ref1 == ref2 then return true end
+
+  -- Extract components: base URL, revision, and attribute
+  local function parse_flake_ref(ref)
+    local attr = ref:match("#([^#]+)$") or ""
+    local base = ref:gsub("#[^#]+$", "")
+    -- Extract commit/rev from the base (after last /)
+    local rev = base:match("/([a-fA-F0-9]+)$")
+    local url_base = base:gsub("/[a-fA-F0-9]+$", "")
+    return { url_base = url_base, rev = rev, attr = attr, full = ref }
+  end
+
+  local p1 = parse_flake_ref(ref1)
+  local p2 = parse_flake_ref(ref2)
+
+  -- URL bases must match
+  if p1.url_base ~= p2.url_base then return false end
+
+  -- Attributes must match
+  if p1.attr ~= p2.attr then return false end
+
+  -- Revisions must match (one can be a prefix of the other for short hashes)
+  if p1.rev and p2.rev then
+    if p1.rev:sub(1, #p2.rev) == p2.rev or p2.rev:sub(1, #p1.rev) == p1.rev then
+      return true
+    end
+    return false
+  end
+
+  -- If one has no revision specified, they don't match (different versions)
+  return false
+end
+
+-- Extract the store path associated with a URL in the profile JSON
+function M._extract_store_path_for_url(json, url)
+  -- Find the element block containing this URL and extract its storePaths
+  -- This is a simplified parser - looks for storePaths array after the URL
+
+  -- Escape URL for pattern matching
+  local escaped_url = url:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+
+  -- Find position of this URL in the JSON
+  local url_pos = json:find('"' .. escaped_url .. '"')
+  if not url_pos then return nil end
+
+  -- Look for storePaths after this position (within a reasonable range)
+  local search_range = json:sub(url_pos, url_pos + 2000)
+  local store_path = search_range:match('"storePaths"%s*:%s*%[%s*"(/nix/store/[^"]+)"')
+
+  return store_path
+end
+
 -- Get store path by building with nix profile install and reading back
 -- This is the main function used during installation
 function M.install_and_get_store_path(flake_ref)
+  -- Check if this flake reference is already installed in the profile
+  local existing_store_path = M.get_installed_store_path(flake_ref)
+  if existing_store_path then
+    logger.step("Already installed in profile: " .. flake_ref)
+    logger.debug("Existing store path: " .. existing_store_path)
+    return { existing_store_path }
+  end
+
   local env_prefix = platform.get_env_prefix()
   local impure_flag = platform.get_impure_flag()
 

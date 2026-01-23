@@ -94,11 +94,34 @@ describe("Profile module", function()
   end)
 
   describe("install_and_get_store_path", function()
-    it("should return store paths from build", function()
+    it("should return store paths from build when not already installed", function()
       local outputs = profile.install_and_get_store_path("nixpkgs#hello")
       assert.is_table(outputs)
       assert.equal(1, #outputs)
       assert.equal("/nix/store/abc-hello", outputs[1])
+    end)
+
+    it("should skip build when already installed", function()
+      local build_called = false
+      local original_try_exec = package.loaded["shell"].try_exec
+      package.loaded["shell"].try_exec = function(cmd, ...)
+        if cmd:match("test %-L") then
+          return true, ""
+        elseif cmd:match("nix profile list") then
+          return true, '{"elements": {"hello": {"originalUrl": "github:NixOS/nixpkgs/abc123#hello", "storePaths": ["/nix/store/existing-hello"]}}}'
+        elseif cmd:match("nix build") then
+          build_called = true
+          return true, "/nix/store/new-hello"
+        end
+        return original_try_exec(cmd, ...)
+      end
+
+      local outputs = profile.install_and_get_store_path("github:NixOS/nixpkgs/abc123#hello")
+      package.loaded["shell"].try_exec = original_try_exec
+
+      assert.is_table(outputs)
+      assert.equal("/nix/store/existing-hello", outputs[1])
+      assert.is_false(build_called)
     end)
   end)
 
@@ -179,6 +202,123 @@ describe("Profile module", function()
     it("should handle tool names with special regex characters", function()
       local result = profile.remove_by_tool("c++")
       assert.is_true(result)
+    end)
+  end)
+
+  describe("_flake_refs_match", function()
+    it("should match identical references", function()
+      local result = profile._flake_refs_match(
+        "github:NixOS/nixpkgs/abc123#hello",
+        "github:NixOS/nixpkgs/abc123#hello"
+      )
+      assert.is_true(result)
+    end)
+
+    it("should match short hash to full hash", function()
+      local result = profile._flake_refs_match(
+        "github:NixOS/nixpkgs/abc123#hello",
+        "github:NixOS/nixpkgs/abc123456789abcdef#hello"
+      )
+      assert.is_true(result)
+    end)
+
+    it("should not match different attributes", function()
+      local result = profile._flake_refs_match(
+        "github:NixOS/nixpkgs/abc123#hello",
+        "github:NixOS/nixpkgs/abc123#goodbye"
+      )
+      assert.is_false(result)
+    end)
+
+    it("should not match different commits", function()
+      local result = profile._flake_refs_match(
+        "github:NixOS/nixpkgs/abc123#hello",
+        "github:NixOS/nixpkgs/def456#hello"
+      )
+      assert.is_false(result)
+    end)
+
+    it("should not match different repos", function()
+      local result = profile._flake_refs_match(
+        "github:NixOS/nixpkgs/abc123#hello",
+        "github:Other/repo/abc123#hello"
+      )
+      assert.is_false(result)
+    end)
+  end)
+
+  describe("get_installed_store_path", function()
+    it("should return store path when flake is already installed", function()
+      local original_try_exec = package.loaded["shell"].try_exec
+      package.loaded["shell"].try_exec = function(cmd, ...)
+        if cmd:match("test %-L") then
+          return true, ""
+        elseif cmd:match("nix profile list") then
+          return true, [[{
+            "elements": {
+              "hello": {
+                "originalUrl": "github:NixOS/nixpkgs/abc123#hello",
+                "storePaths": ["/nix/store/xyz-hello-2.12"]
+              }
+            }
+          }]]
+        end
+        return original_try_exec(cmd, ...)
+      end
+
+      local result = profile.get_installed_store_path("github:NixOS/nixpkgs/abc123#hello")
+      package.loaded["shell"].try_exec = original_try_exec
+
+      assert.equal("/nix/store/xyz-hello-2.12", result)
+    end)
+
+    it("should return nil when flake is not installed", function()
+      local original_try_exec = package.loaded["shell"].try_exec
+      package.loaded["shell"].try_exec = function(cmd, ...)
+        if cmd:match("test %-L") then
+          return true, ""
+        elseif cmd:match("nix profile list") then
+          return true, [[{
+            "elements": {
+              "other": {
+                "originalUrl": "github:NixOS/nixpkgs/def456#other",
+                "storePaths": ["/nix/store/xyz-other-1.0"]
+              }
+            }
+          }]]
+        end
+        return original_try_exec(cmd, ...)
+      end
+
+      local result = profile.get_installed_store_path("github:NixOS/nixpkgs/abc123#hello")
+      package.loaded["shell"].try_exec = original_try_exec
+
+      assert.is_nil(result)
+    end)
+
+    it("should match short hash to full hash in profile", function()
+      local original_try_exec = package.loaded["shell"].try_exec
+      package.loaded["shell"].try_exec = function(cmd, ...)
+        if cmd:match("test %-L") then
+          return true, ""
+        elseif cmd:match("nix profile list") then
+          return true, [[{
+            "elements": {
+              "hello": {
+                "originalUrl": "github:NixOS/nixpkgs/abc123456789abcdef0123456789abcdef012345#hello",
+                "storePaths": ["/nix/store/xyz-hello-2.12"]
+              }
+            }
+          }]]
+        end
+        return original_try_exec(cmd, ...)
+      end
+
+      -- Short hash should match the full hash in the profile
+      local result = profile.get_installed_store_path("github:NixOS/nixpkgs/abc123#hello")
+      package.loaded["shell"].try_exec = original_try_exec
+
+      assert.equal("/nix/store/xyz-hello-2.12", result)
     end)
   end)
 end)
