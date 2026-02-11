@@ -36,31 +36,33 @@ package.loaded["file"] = {
 
 package.loaded["platform"] = {
   normalize_os = function(os) return os:lower() end,
-  verify_build = function(path, tool) end
+  verify_build = function(path, tool) end,
+  get_nixpkgs_repo_url = function() return "https://github.com/NixOS/nixpkgs" end,
+  choose_store_path_with_bin = function(outputs) return outputs[1], true end
 }
 
-package.loaded["vsix"] = {
-  from_nixhub = function(tool, version, os, arch)
+package.loaded["version"] = {
+  resolve_version = function(tool, version, os, arch)
     return {
-      tool = tool,
       version = "1.0.0",
-      outputs = {"/nix/store/abc"},
-      flake_ref = "nixpkgs#" .. tool
+      platforms = {{
+        commit_hash = "abc123",
+        attribute_path = tool
+      }}
     }
-  end,
-  from_flake = function(flake_ref, version_hint)
-    return {
-      flake_ref = flake_ref,
-      version = "1.0.0",
-      outputs = {"/nix/store/def"}
-    }
-  end,
-  choose_best_output = function(outputs, context) return outputs[1] end
+  end
 }
 
-package.loaded["vscode"] = {
-  is_extension = function(tool) return tool and tool:match("vscode%-extensions%.") end,
-  install_extension = function(nix_path, install_path, tool) return "ext.id" end
+package.loaded["profile"] = {
+  install = function(flake_ref)
+    return "/nix/store/abc123-" .. flake_ref:match("#(.+)$"), 0
+  end
+}
+
+package.loaded["flake"] = {
+  install = function(flake_ref, version_hint)
+    return {"/nix/store/def456-tool"}, "1.0.0", 0
+  end
 }
 
 package.loaded["shell"] = {
@@ -73,7 +75,10 @@ package.loaded["logger"] = {
   tool = function(msg) end,
   done = function(msg) end,
   find = function(msg) end,
-  debug = function(msg) end
+  debug = function(msg) end,
+  info = function(msg) end,
+  warn = function(msg) end,
+  hint = function(msg) end
 }
 
 local install = require("install")
