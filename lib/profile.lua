@@ -153,6 +153,53 @@ function M.get_manifest()
   return manifest
 end
 
+--- Find the store path for a package by attribute name (e.g., "hello")
+--- @param package_name string The package attribute name to search for
+--- @return string|nil The store path, or nil if not found
+--- @return string|nil The version extracted from the store path
+--- @return number|string|nil The element index or package name
+function M.find_by_package_name(package_name)
+  local manifest = M.get_manifest()
+
+  if not manifest or not manifest.elements then
+    return nil, nil, nil
+  end
+
+  -- Check if elements is an object (new format)
+  local is_object = false
+  for k, _ in pairs(manifest.elements) do
+    if type(k) == "string" then
+      is_object = true
+      break
+    end
+  end
+
+  if is_object then
+    -- New format: look for package name as key
+    for name, element in pairs(manifest.elements) do
+      if name == package_name and element.storePaths and #element.storePaths > 0 then
+        local store_path = element.storePaths[1]
+        -- Extract version from store path (e.g., /nix/store/xxx-hello-2.12.2 -> 2.12.2)
+        local version = store_path:match("%-([%d][%d%.]+)/?")
+        return store_path, version, name
+      end
+    end
+  else
+    -- Old format: check URL attribute path
+    for i, element in ipairs(manifest.elements) do
+      if element.url and element.url:match("#" .. package_name .. "$") then
+        if element.storePaths and #element.storePaths > 0 then
+          local store_path = element.storePaths[1]
+          local version = store_path:match("%-([%d][%d%.]+)/?")
+          return store_path, version, i - 1
+        end
+      end
+    end
+  end
+
+  return nil, nil, nil
+end
+
 --- Find the store path for a specific flake reference in the manifest
 --- @param flake_ref string The flake reference to search for
 --- @return string|nil The store path, or nil if not found
@@ -235,11 +282,11 @@ function M.install(flake_ref)
   -- Check if package is already installed in the profile
   local existing_path, existing_index = M.find_store_path_for_flake(flake_ref)
   if existing_path then
-    logger.info("Package already installed in profile, skipping installation")
+    logger.done("Package already in Nix profile, using existing installation")
     return existing_path, existing_index
   end
 
-  logger.info("Verified not already installed")
+  logger.debug("Verified not already installed")
 
   -- Build nix profile install command (no --profile flag, uses default)
   local env_prefix = platform.get_env_prefix()

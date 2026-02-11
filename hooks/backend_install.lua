@@ -12,7 +12,6 @@ function PLUGIN:BackendInstall(ctx)
   local install_path = ctx.install_path
 
   -- STAGE 1: Check Nix availability
-  logger.step(string.format("Installing %s%s...", tool, requested_version and "@" .. requested_version or ""))
   logger.info("Checking Nix availability...")
   platform.check_nix_available()
 
@@ -30,14 +29,41 @@ function PLUGIN:BackendInstall(ctx)
         if not current_target:find(requested_version, 1, true) then
           logger.info("Different version already installed, proceeding with requested version")
         else
-          logger.info("Requested version already installed and verified")
+          logger.done("Already installed: " .. tool .. "@" .. requested_version)
           return { version = requested_version }
         end
       else
-        logger.info("Tool already installed and verified")
+        logger.done("Already installed: " .. tool)
         -- Extract version from the store path
         local version_match = current_target:match("%-(%d+[%.%d]+)") or "installed"
         return { version = version_match }
+      end
+    end
+  end
+
+  -- STAGE 3: Check if already in Nix profile (for standard packages)
+  -- Skip this check for flake references since we need the full flake ref to check those
+  if not flake.is_reference(tool) and not flake.is_reference(requested_version) then
+    local profile = require("profile")
+    local store_path, installed_version, index = profile.find_by_package_name(tool)
+    if store_path then
+      -- Check if version matches what was requested
+      if requested_version and requested_version ~= "" and requested_version ~= "latest" then
+        if installed_version and installed_version == requested_version then
+          logger.done(string.format("Package %s@%s already in Nix profile", tool, installed_version))
+          -- Install symlink and return
+          install.standard_tool(store_path, install_path, tool)
+          logger.done(string.format("Installation complete: %s@%s", tool, installed_version))
+          return { version = installed_version }
+        else
+          logger.info(string.format("Found %s@%s in profile, but need version %s", tool, installed_version or "unknown", requested_version))
+        end
+      else
+        -- No specific version requested, use what's in the profile
+        logger.done(string.format("Package %s@%s already in Nix profile", tool, installed_version or "unknown"))
+        install.standard_tool(store_path, install_path, tool)
+        logger.done(string.format("Installation complete: %s@%s", tool, installed_version or "unknown"))
+        return { version = installed_version or "unknown" }
       end
     end
   end
@@ -46,7 +72,7 @@ function PLUGIN:BackendInstall(ctx)
 
   local result
 
-  -- STAGE 3: Determine installation type and route to appropriate strategy
+  -- STAGE 4: Determine installation type and route to appropriate strategy
   if flake.is_reference(tool) then
     logger.find("Detected flake reference")
     result = install.from_flake(tool, requested_version, install_path)

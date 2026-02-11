@@ -28,6 +28,17 @@ function PLUGIN:BackendListVersions(ctx)
     return { versions = { requested_version } }
   end
 
+  -- If a specific version is requested and it's already in the Nix profile,
+  -- return it immediately without querying nixhub (optimization for install workflow)
+  if requested_version and requested_version ~= "" and requested_version ~= "latest" then
+    local profile = require("profile")
+    local store_path, installed_version, _ = profile.find_by_package_name(tool)
+    if store_path and installed_version == requested_version then
+      logger.done(string.format("Version %s already in Nix profile", requested_version))
+      return { versions = { requested_version } }
+    end
+  end
+
   -- Use traditional nixhub.io workflow for regular package names
   logger.info("Querying nixhub for package metadata...")
   local current_os = platform.normalize_os(RUNTIME.osType)
