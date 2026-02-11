@@ -17,7 +17,7 @@ A [Mise](https://github.com/jdx/mise) plugin that brings the power of the [Nix](
 ## Installation
 
 ```sh
-mise plugin install nix https://github.com/jbadeau/mise-nix.git
+mise plugin install nix https://github.com/kenbanks-peng/mise-nix.git
 ```
 
 ## Quick Start
