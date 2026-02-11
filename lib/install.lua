@@ -90,7 +90,7 @@ function M.from_nixhub(tool, requested_version, install_path)
   -- Install as standard tool
   M.standard_tool(nix_store_path, install_path, tool)
 
-  logger.debug(string.format("Successfully installed %s@%s", tool, release.version))
+  logger.done(string.format("%s@%s installed", tool, release.version))
 
   return {
     version = release.version,
@@ -111,7 +111,7 @@ function M.from_flake(flake_ref, version_hint, install_path)
   M.standard_tool(nix_store_path, install_path, flake_ref)
   M.flake_with_hash_workaround(nix_store_path, install_path)
 
-  logger.debug("Successfully installed " .. built_ref)
+  logger.done(built_ref .. " installed")
 
   return {
     version = built_ref,

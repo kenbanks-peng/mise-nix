@@ -75,7 +75,7 @@ function PLUGIN:BackendInstall(ctx)
     result = install.from_flake(requested_version, "", install_path)
 
   else
-    logger.info("Installing from nixpkgs via nixhub metadata")
+    logger.debug("Installing from nixpkgs via nixhub metadata")
     result = install.from_nixhub(tool, requested_version, install_path)
   end
 

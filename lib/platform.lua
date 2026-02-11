@@ -161,7 +161,7 @@ end
 
 -- Verify that a built package path exists and is accessible
 function M.verify_build(chosen_path, tool)
-  logger.info("Verifying package build...")
+  logger.debug("Verifying package build...")
 
   -- Check if the path actually exists and is accessible
   local exists = shell.exec("test -e '" .. chosen_path .. "' && echo yes || echo no"):match("yes")
@@ -175,7 +175,7 @@ function M.verify_build(chosen_path, tool)
   if has_bin_dir then
     local binaries = shell.exec("ls -1 '" .. bin_path .. "' 2>/dev/null")
     if binaries and binaries ~= "" then
-      logger.done("Build verified - Binaries: " .. binaries:gsub("\n", ", "))
+      logger.done("build verified")
     else
       logger.info("Build verified - Package contains a /bin directory but it is empty")
     end
