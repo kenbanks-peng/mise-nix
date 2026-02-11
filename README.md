@@ -152,6 +152,39 @@ export NIXPKGS_ALLOW_INSECURE=1
 mise install nix:some-package
 ```
 
+### Installation Method
+
+`mise-nix` uses `nix profile install` to install all packages to your default Nix profile (`~/.nix-profile`). This provides:
+
+- **State tracking**: Packages are tracked in the Nix profile manifest
+- **Garbage collection**: Native integration with `nix-store --gc`
+- **Version pinning**: Commit hash-based version pinning for reproducibility
+
+When you install a package via mise, it's added to your default Nix profile, and mise creates symlinks from its install directories to the Nix store paths.
+
+**Managing your Nix profile:**
+
+```sh
+# List all packages in your Nix profile
+nix profile list
+
+# Remove a specific package by index
+nix profile remove <index>
+
+# Clean up unused packages
+nix-store --gc
+```
+
+**Automatic garbage collection on uninstall:**
+
+Enable automatic garbage collection when uninstalling packages:
+
+```sh
+export MISE_NIX_AUTO_GC=true
+mise uninstall nix:hello@2.12.1
+# Runs `nix-store --gc` after uninstall
+```
+
 ## Limitations
 
 Mise rejects colons (`:`) in version strings. Use these workaround prefixes:
@@ -172,6 +205,7 @@ Environment variables can be used to configure this plugin:
 | `MISE_NIX_ALLOW_UNFREE` | Set to `true` to allow unfree packages (auto-sets `NIXPKGS_ALLOW_UNFREE=1`) |
 | `MISE_NIX_ALLOW_INSECURE` | Set to `true` to allow insecure packages (auto-sets `NIXPKGS_ALLOW_INSECURE=1`) |
 | `MISE_NIX_ALLOW_LOCAL_FLAKES` | Set to `true` to enable local flake references |
+| `MISE_NIX_AUTO_GC` | Set to `true` to run `nix-store --gc` on uninstall |
 | `MISE_NIX_NIXHUB_BASE_URL` | Custom nixhub.io URL |
 | `MISE_NIX_NIXPKGS_REPO_URL` | Custom nixpkgs repository URL |
 

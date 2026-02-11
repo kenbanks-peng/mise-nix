@@ -1,7 +1,6 @@
 -- Nix flake reference handling and manipulation
-local shell = require("shell")
 local logger = require("logger")
-local platform = require("platform")
+local profile = require("profile")
 
 local M = {}
 
@@ -19,15 +18,15 @@ function M.is_reference(tool)
     "^path:",             -- path:/some/path#package (path URI)
     "^file:",             -- file:/some/path#package (file URI)
     "nixpkgs#",           -- nixpkgs#hello (nixpkgs shorthand)
-    
+
     -- Local path patterns (must contain # to be flake reference)
     "^%./.*#",            -- ./my-flake#package (relative path)
     "^%../.*#",           -- ../my-flake#package (relative path)
     "^/.*#",              -- /absolute/path/flake#tool (absolute path with # for flake)
-    
+
     -- Owner/repo shorthand (e.g., nixos/nixpkgs#hello)
     "^[%w%-_%.]+/[%w%-_%.]+#", -- owner/repo#package shorthand
-    
+
     -- Custom patterns with plus separator
     "^github%+",          -- github+owner/repo#package (GitHub shorthand)
     "^gitlab%+",          -- gitlab+group/project#package (GitLab shorthand)
@@ -54,7 +53,7 @@ end
 -- Convert custom git prefixes to standard nix flake URLs
 function M.convert_custom_git_prefix(version)
   if not version or type(version) ~= "string" then return version end
-  
+
   -- SSH URLs: ssh+... -> git+ssh://...
   if version:match("^ssh%+") then
     local path = version:gsub("^ssh%+", "")
@@ -65,13 +64,13 @@ function M.convert_custom_git_prefix(version)
     end
     return "git+ssh://" .. path
   end
-  
+
   -- HTTPS URLs: https+... -> git+https://...
   if version:match("^https%+") then
     local path = version:gsub("^https%+", "")
     return "git+https://" .. path
   end
-  
+
   -- GitHub shorthand: github+user/repo -> github:user/repo
   -- Supports nested paths like github+owner/repo/subdir
   if version:match("^github%+") then
@@ -114,7 +113,7 @@ function M.parse_reference(flake_ref)
       install_mode = "vscode"
     }
   end
-  
+
   -- Handle VSCode extensions directly (vscode-extensions.publisher.extension)
   if flake_ref:match("^vscode%-extensions%.") then
     return {
@@ -123,7 +122,7 @@ function M.parse_reference(flake_ref)
       full_ref = "nixpkgs#" .. flake_ref
     }
   end
-  
+
   local flake_url, attribute = flake_ref:match("^(.-)#(.+)$")
 
   -- If no attribute is explicitly provided, assume 'default'
@@ -173,21 +172,21 @@ function M.get_versions(flake_ref)
   end
 end
 
--- Build a flake reference with security validation
-function M.build(flake_ref, version)
+-- Install a flake reference using nix profile install
+function M.install(flake_ref, version)
   local security = require("security")
-  
+
   -- Validate that it's actually a flake reference
   if not M.is_reference(flake_ref) then
     error("Invalid flake reference")
   end
-  
+
   local parsed = M.parse_reference(flake_ref)
-  
+
   -- Security validation for local flakes
   security.validate_local_flake(flake_ref)
 
-  local build_ref = parsed.full_ref
+  local install_ref = parsed.full_ref
 
   -- If version is specified and not "latest"/"local"/"", try to append it as a revision
   if version and version ~= "latest" and version ~= "local" and version ~= "" then
@@ -195,33 +194,22 @@ function M.build(flake_ref, version)
     if parsed.url:match("github:") or parsed.url:match("gitlab:") then
       -- Remove any existing revision (if present) and add the new one
       local base_url = parsed.url:gsub("/[a-fA-F0-9]+$", ""):gsub("/v?%d+%.%d+%.%d+.*$", "") -- Remove existing hash/tag
-      build_ref = base_url .. "/" .. version .. "#" .. parsed.attribute
+      install_ref = base_url .. "/" .. version .. "#" .. parsed.attribute
     elseif parsed.url:match("git%+") then
       -- For git+ URLs, we need to add ?ref= or ?rev= parameter
       local separator = parsed.url:find("?") and "&" or "?"
       -- Remove existing ref/rev if present before adding the new one
-      -- Note: Lua patterns don't support | alternation, so we do separate replacements
       local cleaned_url = parsed.url:gsub("[%?&]ref=[^&#]+", ""):gsub("[%?&]rev=[^&#]+", ""):gsub("[?&]$", "")
-      build_ref = cleaned_url .. separator .. "rev=" .. version .. "#" .. parsed.attribute
+      install_ref = cleaned_url .. separator .. "rev=" .. version .. "#" .. parsed.attribute
     end
   end
 
-  local env_prefix = platform.get_env_prefix()
-  local impure_flag = platform.get_impure_flag()
-  local cmdline = string.format("%snix build %s--no-link --print-out-paths '%s'", env_prefix, impure_flag, build_ref)
+  logger.step("Installing via nix profile: " .. install_ref)
 
-  logger.step("Building flake " .. build_ref .. "...")
-  local result = shell.exec(cmdline)
-  local outputs = {}
-  for path in result:gmatch("[^\n]+") do
-    table.insert(outputs, path)
-  end
+  -- Install to default profile and get store path
+  local store_path, index = profile.install(install_ref)
 
-  if #outputs == 0 then
-    error("No outputs returned by nix build for flake: " .. build_ref)
-  end
-
-  return outputs, build_ref
+  return {store_path}, install_ref, index
 end
 
 return M

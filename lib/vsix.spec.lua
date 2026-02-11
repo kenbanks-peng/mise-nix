@@ -9,7 +9,13 @@ package.loaded["platform"] = {
 }
 
 package.loaded["flake"] = {
-  build = function(flake_ref, version_hint) return {"/nix/store/abc"}, "built_ref" end
+  build = function(flake_ref, version_hint) return {"/nix/store/abc"}, "built_ref" end,
+  build_with_profile = function(flake_ref, version_hint) return {"/nix/store/profile-abc"}, "built_ref" end
+}
+
+package.loaded["profile"] = {
+  get_profile_path = function(tool, version) return "/home/user/.local/share/mise-nix/profiles/" .. tool .. "/" .. version end,
+  install_to_profile = function(flake_ref, profile_path) return "/nix/store/profile-abc123" end
 }
 
 package.loaded["version"] = {
@@ -40,6 +46,8 @@ describe("Build module", function()
   it("should have all required functions", function()
     assert.is_function(vsix.from_nixhub)
     assert.is_function(vsix.from_flake)
+    assert.is_function(vsix.from_nixhub_with_profile)
+    assert.is_function(vsix.from_flake_with_profile)
     assert.is_function(vsix.choose_best_output)
   end)
 
@@ -67,6 +75,26 @@ describe("Build module", function()
       local outputs = {"/nix/store/abc"}
       local chosen = vsix.choose_best_output(outputs, "nodejs")
       assert.equal("/nix/store/abc", chosen)
+    end)
+  end)
+
+  describe("from_nixhub_with_profile", function()
+    it("should build package from nixhub using profiles", function()
+      local result = vsix.from_nixhub_with_profile("hello", "latest", "linux", "amd64")
+      assert.is_table(result)
+      assert.equal("hello", result.tool)
+      assert.equal("1.0.0", result.version)
+      assert.is_table(result.outputs)
+      assert.equal("/nix/store/profile-abc123", result.outputs[1])
+    end)
+  end)
+
+  describe("from_flake_with_profile", function()
+    it("should build package from flake reference using profiles", function()
+      local result = vsix.from_flake_with_profile("nixpkgs#hello", "v1.0.0")
+      assert.is_table(result)
+      assert.equal("nixpkgs#hello", result.flake_ref)
+      assert.is_table(result.outputs)
     end)
   end)
 end)
