@@ -231,6 +231,10 @@ function M.find_store_path_for_flake(flake_ref)
     end
   end
 
+  -- Extract the short package name from the attribute path
+  -- e.g., "nodejs" from "legacyPackages.aarch64-darwin.nodejs"
+  local short_attr = package_attr and package_attr:match("[^.]+$")
+
   if is_object then
     -- New format: elements is an object with package names as keys
     for name, element in pairs(manifest.elements) do
@@ -240,11 +244,15 @@ function M.find_store_path_for_flake(flake_ref)
                                       :gsub("^NixOS/nixpkgs/", "")
                                       :gsub("^nixos/nixpkgs/", "")
 
-        -- Check if URLs match (accounting for different formats)
-        -- Match by commit hash or by package name
-        if element_url:find(normalized_ref, 1, true) or
-           normalized_ref:find(element_url, 1, true) or
-           (package_attr and name == package_attr) then
+        -- Must match BOTH the commit hash AND the package name.
+        -- Matching commit hash alone is not enough because multiple packages
+        -- can be installed from the same nixpkgs revision.
+        local url_matches = element_url:find(normalized_ref, 1, true) or
+                            normalized_ref:find(element_url, 1, true)
+        local name_matches = (package_attr and name == package_attr) or
+                             (short_attr and name == short_attr)
+
+        if name_matches and (url_matches or not package_attr) then
           if element.storePaths and #element.storePaths > 0 then
             return element.storePaths[1], name
           end
@@ -258,9 +266,16 @@ function M.find_store_path_for_flake(flake_ref)
         local normalized_url = element.url:gsub("^github:", "github.com/")
                                          :gsub("^gitlab:", "gitlab.com/")
 
-        -- Check if URLs match (accounting for different formats)
-        if normalized_url:find(normalized_ref, 1, true) or
-           normalized_ref:find(normalized_url, 1, true) then
+        -- For old format, the URL typically includes the #attribute fragment.
+        -- Match both URL base and package attribute to avoid false positives
+        -- from different packages installed from the same nixpkgs revision.
+        local url_base_matches = normalized_url:find(normalized_ref, 1, true) or
+                                 normalized_ref:find(normalized_url, 1, true)
+        local attr_matches = not package_attr or
+                             normalized_url:find("#" .. package_attr, 1, true) or
+                             (short_attr and normalized_url:find("#" .. short_attr, 1, true))
+
+        if url_base_matches and attr_matches then
           if element.storePaths and #element.storePaths > 0 then
             return element.storePaths[1], i - 1  -- Nix uses 0-based indexing
           end

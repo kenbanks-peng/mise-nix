@@ -10,17 +10,32 @@ function PLUGIN:BackendInstall(ctx)
   local requested_version = ctx.version
   local install_path = ctx.install_path
 
-  -- STAGE 1: Check if already installed by mise
+  -- STAGE 1: Check if already installed by mise AND present in nix profile
   -- Check if the install_path symlink exists and points to a valid nix store path
   local shell = require("shell")
+  local profile = require("profile")
   local ok, current_target = shell.try_exec('readlink "%s" 2>/dev/null', install_path)
   if ok and current_target and current_target ~= "" then
     current_target = current_target:gsub("\n", "")
-    -- Verify the target actually exists
+    -- Verify the target actually exists in the store
     local target_exists = shell.try_exec('test -e "%s"', current_target)
     if target_exists then
-      -- If a specific version was requested, verify it matches
-      if requested_version and requested_version ~= "" and requested_version ~= "latest" then
+      -- Also verify the package is actually in the nix profile
+      -- A store path can exist without being in the profile (e.g., as a dependency,
+      -- or after removal without garbage collection)
+      local in_profile = false
+      if not flake.is_reference(tool) and not flake.is_reference(requested_version) then
+        local profile_store_path = profile.find_by_package_name(tool)
+        in_profile = profile_store_path ~= nil
+      else
+        local profile_store_path = profile.find_store_path_for_flake(
+          flake.is_reference(tool) and tool or requested_version)
+        in_profile = profile_store_path ~= nil
+      end
+
+      if not in_profile then
+        logger.info("Store path exists but package not in nix profile, reinstalling")
+      elseif requested_version and requested_version ~= "" and requested_version ~= "latest" then
         if not current_target:find(requested_version, 1, true) then
           logger.info("Different version already installed, proceeding with requested version")
         else
@@ -39,7 +54,6 @@ function PLUGIN:BackendInstall(ctx)
   -- STAGE 3: Check if already in Nix profile (for standard packages)
   -- Skip this check for flake references since we need the full flake ref to check those
   if not flake.is_reference(tool) and not flake.is_reference(requested_version) then
-    local profile = require("profile")
     local store_path, installed_version, index = profile.find_by_package_name(tool)
     if store_path then
       -- Check if version matches what was requested
