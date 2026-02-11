@@ -1,5 +1,8 @@
 # `mise-nix`
 
+forked from jbadeau/mise-nix - I vibed it from using local builds to using 'nix profile install'
+
+
 A [Mise](https://github.com/jdx/mise) plugin that brings the power of the [Nix](https://nixos.org/) ecosystem to your development workflow.
 
 ## Features
