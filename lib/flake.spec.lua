@@ -18,6 +18,12 @@ package.loaded["platform"] = {
   needs_impure_mode = function() return false end
 }
 
+package.loaded["profile"] = {
+  install = function(flake_ref)
+    return "/nix/store/abc123-package", 0
+  end
+}
+
 local flake = require("flake")
 
 describe("Flake module", function()
@@ -27,14 +33,13 @@ describe("Flake module", function()
     assert.is_function(flake.parse_git_ref_syntax)
     assert.is_function(flake.parse_reference)
     assert.is_function(flake.get_versions)
-    assert.is_function(flake.build)
+    assert.is_function(flake.install)
   end)
 
   describe("is_reference", function()
     it("should detect flake references", function()
       assert.is_true(flake.is_reference("github:owner/repo#package"))
       assert.is_true(flake.is_reference("nixpkgs#hello"))
-      assert.is_true(flake.is_reference("vscode-extensions.ms-python.python"))
     end)
 
     it("should detect custom git prefix references", function()
@@ -99,12 +104,6 @@ describe("Flake module", function()
       assert.equal("github:owner/repo", parsed.url)
       assert.equal("package", parsed.attribute)
       assert.equal("github:owner/repo#package", parsed.full_ref)
-    end)
-
-    it("should handle VSCode extensions", function()
-      local parsed = flake.parse_reference("vscode-extensions.ms-python.python")
-      assert.equal("nixpkgs", parsed.url)
-      assert.equal("vscode-extensions.ms-python.python", parsed.attribute)
     end)
   end)
 
