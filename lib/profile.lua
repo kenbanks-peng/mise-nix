@@ -299,10 +299,15 @@ function M.install(flake_ref)
     flake_ref
   )
 
-  logger.debug("Installing package to Nix profile...")
-  logger.debug("Running: " .. cmd)
+  logger.info("[TRACE] profile.install: running: " .. cmd)
 
-  local output = shell.exec(cmd)
+  local handle = io.popen(cmd)
+  local output = handle:read("*a")
+  local success, exit_type, exit_code = handle:close()
+  logger.info("[TRACE] profile.install: cmd returned (exit=" .. tostring(exit_code) .. ")")
+  if not success then
+    error("nix profile install failed (exit " .. tostring(exit_code) .. "): " .. tostring(output))
+  end
   logger.debug("Profile install output: " .. (output or ""))
   logger.debug("Package installed to profile")
 
