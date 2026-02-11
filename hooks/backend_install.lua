@@ -2,12 +2,8 @@
 -- Main installation hook - delegates to specialized modules
 
 local platform = require("platform")
-local vscode = require("vscode")
-local jetbrains = require("jetbrains")
-local neovim = require("neovim")
 local flake = require("flake")
 local install = require("install")
-local vsix = require("vsix")
 local logger = require("logger")
 
 function PLUGIN:BackendInstall(ctx)
@@ -20,63 +16,38 @@ function PLUGIN:BackendInstall(ctx)
   logger.info("Checking Nix availability...")
   platform.check_nix_available()
 
-  -- STAGE 2: Check if package is available
-  logger.info("Verifying package availability...")
-  local list_ctx = { tool = tool, version = requested_version }
-  local versions_result = self:BackendListVersions(list_ctx)
-
-  if not versions_result or not versions_result.versions or #versions_result.versions == 0 then
-    error(string.format("Package '%s' is not available or not found in nixpkgs", tool))
+  -- STAGE 2: Check if already installed by mise
+  -- Check if the install_path symlink exists and points to a valid nix store path
+  local shell = require("shell")
+  local ok, current_target = shell.try_exec('readlink "%s" 2>/dev/null', install_path)
+  if ok and current_target and current_target ~= "" then
+    current_target = current_target:gsub("\n", "")
+    -- Verify the target actually exists
+    local target_exists = shell.try_exec('test -e "%s"', current_target)
+    if target_exists then
+      -- If a specific version was requested, verify it matches
+      if requested_version and requested_version ~= "" and requested_version ~= "latest" then
+        if not current_target:find(requested_version, 1, true) then
+          logger.info("Different version already installed, proceeding with requested version")
+        else
+          logger.info("Requested version already installed and verified")
+          return { version = requested_version }
+        end
+      else
+        logger.info("Tool already installed and verified")
+        -- Extract version from the store path
+        local version_match = current_target:match("%-(%d+[%.%d]+)") or "installed"
+        return { version = version_match }
+      end
+    end
   end
-  logger.done("Package is available")
+
+  -- Note: Package availability is already verified by mise calling BackendListVersions before install
 
   local result
 
   -- STAGE 3: Determine installation type and route to appropriate strategy
-  if vscode.is_extension(tool) then
-    logger.find("Detected VSCode extension")
-    -- VSCode extensions: treat as flake references
-    local flake_ref = tool:match("^vscode%-extensions%.") and ("nixpkgs#" .. tool) or tool
-    result = install.from_flake(flake_ref, requested_version, install_path)
-
-  elseif jetbrains.is_plugin(tool) then
-    logger.find("Detected JetBrains plugin")
-    -- JetBrains plugins: build flake reference to nix-jetbrains-plugins
-    local plugin_info = jetbrains.extract_plugin_info(tool)
-    if plugin_info then
-      -- Build the flake reference based on the nix-jetbrains-plugins structure
-      -- The correct path is: plugins.<system>.<ide>.<version>."<plugin_id>"
-      local flake_ref = string.format("github:theCapypara/nix-jetbrains-plugins#plugins.%s.%s.\"%s\".\"%s\"",
-        plugin_info.system, plugin_info.ide, plugin_info.version, plugin_info.plugin_id)
-      -- Build the plugin and then install it to the JetBrains plugin directory
-      local build_result = vsix.from_flake(flake_ref, "")
-      local nix_store_path = vsix.choose_best_output(build_result.outputs, flake_ref)
-      platform.verify_build(nix_store_path, flake_ref)
-      jetbrains.install_plugin_from_store(nix_store_path, tool)
-      result = {
-        version = build_result.version,
-        store_path = nix_store_path,
-        is_jetbrains = true
-      }
-    else
-      error("Invalid JetBrains plugin format: " .. tool)
-    end
-
-  elseif neovim.is_plugin(tool) then
-    logger.find("Detected Neovim plugin")
-    -- Neovim plugins: build from nixpkgs vimPlugins and install to pack directory
-    local flake_ref = neovim.extract_flake_ref(tool)
-    local build_result = vsix.from_flake("nixpkgs#" .. flake_ref, requested_version or "")
-    local nix_store_path = vsix.choose_best_output(build_result.outputs, flake_ref)
-    platform.verify_build(nix_store_path, flake_ref)
-    neovim.install_plugin_from_store(nix_store_path, tool)
-    result = {
-      version = build_result.version,
-      store_path = nix_store_path,
-      is_neovim = true
-    }
-
-  elseif flake.is_reference(tool) then
+  if flake.is_reference(tool) then
     logger.find("Detected flake reference")
     result = install.from_flake(tool, requested_version, install_path)
 

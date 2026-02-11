@@ -30,10 +30,8 @@ function M.is_reference(tool)
     -- Custom patterns with plus separator
     "^github%+",          -- github+owner/repo#package (GitHub shorthand)
     "^gitlab%+",          -- gitlab+group/project#package (GitLab shorthand)
-    "^vscode%+install=vscode%-extensions%.", -- vscode+install=vscode-extensions.publisher.extension (VSCode extension install)
     "^ssh%+",             -- ssh+host/repo.git#package (for tool@source only)
     "^https%+",           -- https+host/repo.git#package (for tool@source only)
-    "^vscode%-extensions%.", -- vscode-extensions.publisher.extension (normal package)
   }
 
   for _, pattern in ipairs(patterns) do
@@ -103,26 +101,6 @@ end
 
 -- Parse flake reference into components with enhanced ref support
 function M.parse_reference(flake_ref)
-  -- Handle VSCode install syntax (vscode+install=vscode-extensions.publisher.extension)
-  if flake_ref:match("^vscode%+install=vscode%-extensions%.") then
-    local ext_package = flake_ref:gsub("^vscode%+install=", "")
-    return {
-      url = "nixpkgs",
-      attribute = ext_package,
-      full_ref = "nixpkgs#" .. ext_package,
-      install_mode = "vscode"
-    }
-  end
-
-  -- Handle VSCode extensions directly (vscode-extensions.publisher.extension)
-  if flake_ref:match("^vscode%-extensions%.") then
-    return {
-      url = "nixpkgs",
-      attribute = flake_ref,
-      full_ref = "nixpkgs#" .. flake_ref
-    }
-  end
-
   local flake_url, attribute = flake_ref:match("^(.-)#(.+)$")
 
   -- If no attribute is explicitly provided, assume 'default'

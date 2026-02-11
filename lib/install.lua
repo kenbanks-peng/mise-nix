@@ -1,9 +1,8 @@
 -- Installation strategies using nix profile install
 local platform = require("platform")
-local vsix = require("vsix")
-local vscode = require("vscode")
-local jetbrains = require("jetbrains")
-local neovim = require("neovim")
+local version = require("version")
+local profile = require("profile")
+local flake = require("flake")
 local shell = require("shell")
 local logger = require("logger")
 
@@ -48,71 +47,76 @@ function M.flake_with_hash_workaround(nix_store_path, install_path)
   shell.symlink_force(nix_store_path, hash_path)
 end
 
+-- Choose best output path from build results
+local function choose_best_output(outputs, context_label)
+  local chosen_path, has_binaries = platform.choose_store_path_with_bin(outputs)
+
+  if not has_binaries then
+    logger.warn("No binaries found. This package may be a library or data-only.")
+    logger.hint("Using first available output for symlinking or build environment use.")
+  end
+
+  return chosen_path
+end
+
 -- Install from nixhub with automatic version resolution
 function M.from_nixhub(tool, requested_version, install_path)
   local current_os = platform.normalize_os(RUNTIME.osType)
   local current_arch = RUNTIME.archType:lower()
 
-  local build_result = vsix.from_nixhub(tool, requested_version, current_os, current_arch)
-  local nix_store_path = vsix.choose_best_output(build_result.outputs, tool)
+  -- Resolve version
+  logger.info(string.format("Resolving version: %s%s", tool, requested_version and "@" .. requested_version or " (latest)"))
+  local release = version.resolve_version(tool, requested_version, current_os, current_arch)
+  logger.done(string.format("Resolved to version %s", release.version))
+
+  -- Get platform build info
+  local platform_build = release.platforms and release.platforms[1]
+  if not platform_build then
+    error("No platform build found for version " .. release.version)
+  end
+
+  -- Build Nix flake reference
+  local repo_url = platform.get_nixpkgs_repo_url()
+  local repo_ref = repo_url:gsub("https://github.com/", "github:")
+  local flake_ref = string.format("%s/%s#%s", repo_ref, platform_build.commit_hash, platform_build.attribute_path)
+
+  -- Install to profile and get store path
+  local store_path, index = profile.install(flake_ref)
+  local nix_store_path = choose_best_output({store_path}, tool)
 
   -- Verify the build succeeded
   platform.verify_build(nix_store_path, tool)
 
-  -- Handle VSCode extensions and JetBrains plugins specially
-  if vscode.is_extension(tool) then
-    vscode.install_extension(nix_store_path, tool)
-  elseif jetbrains.is_plugin(tool) then
-    jetbrains.install_plugin_from_store(nix_store_path, tool)
-  else
-    M.standard_tool(nix_store_path, install_path, tool)
-  end
+  -- Install as standard tool
+  M.standard_tool(nix_store_path, install_path, tool)
 
-  logger.done(string.format("Successfully installed %s@%s", tool, build_result.version))
+  logger.done(string.format("Successfully installed %s@%s", tool, release.version))
 
   return {
-    version = build_result.version,
+    version = release.version,
     store_path = nix_store_path,
-    is_vscode = vscode.is_extension(tool),
-    is_jetbrains = jetbrains.is_plugin(tool),
-    profile_index = build_result.profile_index
+    profile_index = index
   }
 end
 
 -- Install from flake reference
 function M.from_flake(flake_ref, version_hint, install_path)
-  local build_result = vsix.from_flake(flake_ref, version_hint)
-  local nix_store_path = vsix.choose_best_output(build_result.outputs, flake_ref)
+  local outputs, built_ref, index = flake.install(flake_ref, version_hint)
+  local nix_store_path = choose_best_output(outputs, flake_ref)
 
   -- Verify the build succeeded
   platform.verify_build(nix_store_path, flake_ref)
 
-  local is_vscode = vscode.is_extension(flake_ref)
-  local is_jetbrains = jetbrains.is_plugin(flake_ref)
-  local is_neovim = neovim.is_plugin(flake_ref)
+  -- Install as standard tool
+  M.standard_tool(nix_store_path, install_path, flake_ref)
+  M.flake_with_hash_workaround(nix_store_path, install_path)
 
-  if is_vscode then
-    logger.find("Detected VSCode extension flake: " .. flake_ref)
-    vscode.install_extension(nix_store_path, flake_ref)
-  elseif is_jetbrains then
-    logger.find("Detected JetBrains plugin flake: " .. flake_ref)
-    jetbrains.install_plugin_from_store(nix_store_path, flake_ref)
-  elseif is_neovim then
-    neovim.install_plugin_from_store(nix_store_path, flake_ref)
-  else
-    M.standard_tool(nix_store_path, install_path, flake_ref)
-    M.flake_with_hash_workaround(nix_store_path, install_path)
-  end
-
-  logger.done("Successfully installed " .. build_result.version)
+  logger.done("Successfully installed " .. built_ref)
 
   return {
-    version = build_result.version,
+    version = built_ref,
     store_path = nix_store_path,
-    is_vscode = is_vscode,
-    is_jetbrains = is_jetbrains,
-    is_neovim = is_neovim,
-    profile_index = build_result.profile_index
+    profile_index = index
   }
 end
 

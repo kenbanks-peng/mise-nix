@@ -4,6 +4,10 @@ local json = require("json")
 
 local M = {}
 
+-- Simple in-memory cache to avoid redundant network calls during installation
+local metadata_cache = {}
+local cache_ttl = 300 -- 5 minutes
+
 -- Get the base URL for nixhub API
 function M.get_base_url()
   return os.getenv("MISE_NIX_NIXHUB_BASE_URL") or "https://www.nixhub.io"
@@ -11,6 +15,13 @@ end
 
 -- Fetch tool metadata from nixhub.io
 function M.fetch_metadata(tool)
+  -- Check cache first
+  local cached = metadata_cache[tool]
+  if cached and (os.time() - cached.timestamp) < cache_ttl then
+    return cached.success, cached.data, cached.response
+  end
+
+  -- Cache miss or expired - fetch from network
   local url = M.get_base_url() .. "/packages/" .. tool .. "?_data=routes%2F_nixhub.packages.%24pkg._index"
 
   -- Use native HTTP module
@@ -35,6 +46,15 @@ function M.fetch_metadata(tool)
   end
 
   local success, data = pcall(json.decode, resp.body)
+
+  -- Cache the result
+  metadata_cache[tool] = {
+    success = success,
+    data = data,
+    response = resp.body,
+    timestamp = os.time()
+  }
+
   return success, data, resp.body
 end
 

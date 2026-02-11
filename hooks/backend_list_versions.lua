@@ -3,9 +3,6 @@ function PLUGIN:BackendListVersions(ctx)
   local platform = require("platform")
   local nixhub = require("nixhub")
   local version = require("version")
-  local vscode = require("vscode")
-  local jetbrains = require("jetbrains")
-  local neovim = require("neovim")
   local logger = require("logger")
   local tool = ctx.tool
 
@@ -14,26 +11,6 @@ function PLUGIN:BackendListVersions(ctx)
   end
 
   logger.info("Listing available versions for: " .. tool)
-
-  -- If this is a JetBrains plugin, return a single "latest" version
-  -- since plugins are managed by the nix-jetbrains-plugins flake
-  if jetbrains.is_plugin(tool) then
-    logger.find("Detected JetBrains plugin")
-    return { versions = { "latest" } }
-  end
-
-  -- If this is a Neovim plugin, return a single "latest" version
-  -- since plugins are from nixpkgs vimPlugins
-  if neovim.is_plugin(tool) then
-    logger.find("Detected Neovim plugin")
-    return { versions = { "latest" } }
-  end
-
-  -- If this is a VSCode extension that uses the install format, also return "latest"
-  if vscode.is_extension(tool) and tool:match("^vscode%+install=") then
-    logger.find("Detected VSCode extension")
-    return { versions = { "latest" } }
-  end
 
   -- If this is a flake reference, we return available versions for that flake
   if flake.is_reference(tool) then

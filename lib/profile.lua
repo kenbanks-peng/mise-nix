@@ -239,6 +239,8 @@ function M.install(flake_ref)
     return existing_path, existing_index
   end
 
+  logger.info("Verified not already installed")
+
   -- Build nix profile install command (no --profile flag, uses default)
   local env_prefix = platform.get_env_prefix()
   local impure_flag = platform.get_impure_flag()
