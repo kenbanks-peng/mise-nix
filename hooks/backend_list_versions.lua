@@ -10,7 +10,11 @@ function PLUGIN:BackendListVersions(ctx)
     error("Tool name cannot be empty")
   end
 
-  logger.info("Listing available versions for: " .. tool)
+  -- Check Nix availability first - no point proceeding if Nix isn't available
+  logger.debug("Checking Nix availability...")
+  platform.check_nix_available()
+
+  logger.debug("Listing available versions for: " .. tool)
 
   -- If this is a flake reference, we return available versions for that flake
   if flake.is_reference(tool) then
@@ -31,16 +35,18 @@ function PLUGIN:BackendListVersions(ctx)
   -- If a specific version is requested and it's already in the Nix profile,
   -- return it immediately without querying nixhub (optimization for install workflow)
   if requested_version and requested_version ~= "" and requested_version ~= "latest" then
+    logger.debug(string.format("Checking if %s@%s is already in profile...", tool, requested_version))
     local profile = require("profile")
     local store_path, installed_version, _ = profile.find_by_package_name(tool)
-    if store_path and installed_version == requested_version then
+    logger.debug(string.format("Profile check result: store_path=%s, installed_version=%s", tostring(store_path), tostring(installed_version)))
+    if store_path and installed_version and installed_version == requested_version then
       logger.done(string.format("Version %s already in Nix profile", requested_version))
       return { versions = { requested_version } }
     end
   end
 
   -- Use traditional nixhub.io workflow for regular package names
-  logger.info("Querying nixhub for package metadata...")
+  logger.debug("Querying nixhub for package metadata...")
   local current_os = platform.normalize_os(RUNTIME.osType)
   local current_arch = RUNTIME.archType:lower()
 
@@ -54,7 +60,7 @@ function PLUGIN:BackendListVersions(ctx)
     return { versions = {} }
   end
 
-  logger.info("Filtering compatible versions...")
+  logger.debug("Filtering compatible versions...")
   local versions = {}
   for _, release in ipairs(data.releases) do
     local release_version = release.version
@@ -76,6 +82,6 @@ function PLUGIN:BackendListVersions(ctx)
     table.insert(reversed, versions[i])
   end
 
-  logger.done(string.format("Found %d compatible version(s)", #reversed))
+  logger.done(string.format("%s available in nixhub", tool))
   return { versions = reversed }
 end

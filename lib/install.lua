@@ -10,7 +10,7 @@ local M = {}
 
 -- Standard tool installation via symlink (PVC-optimized)
 function M.standard_tool(nix_store_path, install_path, label)
-  logger.tool("Installing as standard tool: " .. label)
+  logger.done("mise symlink added")
 
   -- In containerized environments, check if symlink already exists and is correct
   if shell.is_containerized() then
@@ -65,9 +65,9 @@ function M.from_nixhub(tool, requested_version, install_path)
   local current_arch = RUNTIME.archType:lower()
 
   -- Resolve version
-  logger.info(string.format("Resolving version: %s%s", tool, requested_version and "@" .. requested_version or " (latest)"))
+  logger.debug(string.format("Resolving version: %s%s", tool, requested_version and "@" .. requested_version or " (latest)"))
   local release = version.resolve_version(tool, requested_version, current_os, current_arch)
-  logger.done(string.format("Resolved to version %s", release.version))
+  logger.debug(string.format("Resolved to version %s", release.version))
 
   -- Get platform build info
   local platform_build = release.platforms and release.platforms[1]
@@ -90,7 +90,7 @@ function M.from_nixhub(tool, requested_version, install_path)
   -- Install as standard tool
   M.standard_tool(nix_store_path, install_path, tool)
 
-  logger.done(string.format("Successfully installed %s@%s", tool, release.version))
+  logger.debug(string.format("Successfully installed %s@%s", tool, release.version))
 
   return {
     version = release.version,
@@ -111,7 +111,7 @@ function M.from_flake(flake_ref, version_hint, install_path)
   M.standard_tool(nix_store_path, install_path, flake_ref)
   M.flake_with_hash_workaround(nix_store_path, install_path)
 
-  logger.done("Successfully installed " .. built_ref)
+  logger.debug("Successfully installed " .. built_ref)
 
   return {
     version = built_ref,

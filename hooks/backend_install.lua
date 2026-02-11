@@ -1,7 +1,6 @@
 -- mise-nix installer (modular refactored version)
 -- Main installation hook - delegates to specialized modules
 
-local platform = require("platform")
 local flake = require("flake")
 local install = require("install")
 local logger = require("logger")
@@ -11,11 +10,7 @@ function PLUGIN:BackendInstall(ctx)
   local requested_version = ctx.version
   local install_path = ctx.install_path
 
-  -- STAGE 1: Check Nix availability
-  logger.info("Checking Nix availability...")
-  platform.check_nix_available()
-
-  -- STAGE 2: Check if already installed by mise
+  -- STAGE 1: Check if already installed by mise
   -- Check if the install_path symlink exists and points to a valid nix store path
   local shell = require("shell")
   local ok, current_target = shell.try_exec('readlink "%s" 2>/dev/null', install_path)
@@ -50,19 +45,17 @@ function PLUGIN:BackendInstall(ctx)
       -- Check if version matches what was requested
       if requested_version and requested_version ~= "" and requested_version ~= "latest" then
         if installed_version and installed_version == requested_version then
-          logger.done(string.format("Package %s@%s already in Nix profile", tool, installed_version))
+          logger.done(string.format("%s@%s already installed in nix", tool, installed_version))
           -- Install symlink and return
           install.standard_tool(store_path, install_path, tool)
-          logger.done(string.format("Installation complete: %s@%s", tool, installed_version))
           return { version = installed_version }
         else
           logger.info(string.format("Found %s@%s in profile, but need version %s", tool, installed_version or "unknown", requested_version))
         end
       else
         -- No specific version requested, use what's in the profile
-        logger.done(string.format("Package %s@%s already in Nix profile", tool, installed_version or "unknown"))
+        logger.done(string.format("%s@%s already installed in nix", tool, installed_version or "unknown"))
         install.standard_tool(store_path, install_path, tool)
-        logger.done(string.format("Installation complete: %s@%s", tool, installed_version or "unknown"))
         return { version = installed_version or "unknown" }
       end
     end
@@ -86,6 +79,5 @@ function PLUGIN:BackendInstall(ctx)
     result = install.from_nixhub(tool, requested_version, install_path)
   end
 
-  logger.done(string.format("Installation complete: %s@%s", tool, result.version))
   return { version = result.version }
 end
