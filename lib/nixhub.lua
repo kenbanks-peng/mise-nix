@@ -18,7 +18,8 @@ function M.fetch_metadata(tool)
     url = url,
     headers = {
       ['User-Agent'] = 'mise-nix'
-    }
+    },
+    timeout = 30000  -- 30 second timeout to prevent hanging
   })
 
   if err ~= nil then
