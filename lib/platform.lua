@@ -1,5 +1,6 @@
 -- Platform and system utilities
 local shell = require("shell")
+local logger = require("logger")
 
 local M = {}
 
@@ -160,6 +161,8 @@ end
 
 -- Verify that a built package path exists and is accessible
 function M.verify_build(chosen_path, tool)
+  logger.info("Verifying package build...")
+
   -- Check if the path actually exists and is accessible
   local exists = shell.exec("test -e '" .. chosen_path .. "' && echo yes || echo no"):match("yes")
   if not exists then
@@ -172,10 +175,12 @@ function M.verify_build(chosen_path, tool)
   if has_bin_dir then
     local binaries = shell.exec("ls -1 '" .. bin_path .. "' 2>/dev/null")
     if binaries and binaries ~= "" then
-      print("Installed binaries: " .. binaries:gsub("\n", ", "))
+      logger.done("Build verified - Binaries: " .. binaries:gsub("\n", ", "))
     else
-      print("Installed package contains a /bin directory but it is empty.")
+      logger.info("Build verified - Package contains a /bin directory but it is empty")
     end
+  else
+    logger.done("Build verified")
   end
 end
 

@@ -10,10 +10,12 @@ local M = {}
 -- Install a package from nixhub metadata using nix profile install
 function M.from_nixhub(tool, requested_version, current_os, current_arch)
   local start_time = os.time()
+  logger.info(string.format("Resolving version: %s%s", tool, requested_version and "@" .. requested_version or " (latest)"))
   logger.debug("Starting nixhub resolution for " .. tool .. "@" .. (requested_version or "latest"))
 
   -- Resolve version to actual release
   local release = version.resolve_version(tool, requested_version, current_os, current_arch)
+  logger.done(string.format("Resolved to version %s", release.version))
   logger.debug(string.format("Version resolution took %ds", os.time() - start_time))
 
   -- Get platform build info
@@ -26,12 +28,10 @@ function M.from_nixhub(tool, requested_version, current_os, current_arch)
   local repo_url = platform.get_nixpkgs_repo_url()
   local repo_ref = repo_url:gsub("https://github.com/", "github:")
   local flake_ref = string.format("%s/%s#%s", repo_ref, platform_build.commit_hash, platform_build.attribute_path)
-
-  logger.step(string.format("Installing %s@%s...", tool, release.version))
+  logger.debug("Flake reference: " .. flake_ref)
 
   -- Install to default profile and get store path
   local install_start = os.time()
-  logger.info("Resolving package...")
   local store_path, index = profile.install(flake_ref)
   logger.debug(string.format("Profile install took %ds", os.time() - install_start))
 

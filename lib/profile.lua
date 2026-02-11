@@ -250,12 +250,15 @@ function M.install(flake_ref)
     flake_ref
   )
 
+  logger.step("Installing package to Nix profile...")
   logger.debug("Running: " .. cmd)
 
   local output = shell.exec(cmd)
   logger.debug("Profile install output: " .. (output or ""))
+  logger.done("Package installed to profile")
 
   -- Find the newly installed package in the manifest
+  logger.info("Locating package in profile manifest...")
   local store_path, index = M.find_store_path_for_flake(flake_ref)
 
   if not store_path then
