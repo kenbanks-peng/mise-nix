@@ -6,32 +6,41 @@ function PLUGIN:BackendListVersions(ctx)
   local vscode = require("vscode")
   local jetbrains = require("jetbrains")
   local neovim = require("neovim")
+  local logger = require("logger")
   local tool = ctx.tool
 
   if not tool or tool == "" then
     error("Tool name cannot be empty")
   end
 
+  logger.info("Listing available versions for: " .. tool)
+
   -- If this is a JetBrains plugin, return a single "latest" version
   -- since plugins are managed by the nix-jetbrains-plugins flake
   if jetbrains.is_plugin(tool) then
+    logger.find("Detected JetBrains plugin")
     return { versions = { "latest" } }
   end
 
   -- If this is a Neovim plugin, return a single "latest" version
   -- since plugins are from nixpkgs vimPlugins
   if neovim.is_plugin(tool) then
+    logger.find("Detected Neovim plugin")
     return { versions = { "latest" } }
   end
 
   -- If this is a VSCode extension that uses the install format, also return "latest"
   if vscode.is_extension(tool) and tool:match("^vscode%+install=") then
+    logger.find("Detected VSCode extension")
     return { versions = { "latest" } }
   end
 
   -- If this is a flake reference, we return available versions for that flake
   if flake.is_reference(tool) then
+    logger.find("Detected flake reference")
+    logger.info("Querying flake versions...")
     local versions = flake.get_versions(tool)
+    logger.done(string.format("Found %d version(s)", #versions))
     return { versions = versions }
   end
 
@@ -43,6 +52,7 @@ function PLUGIN:BackendListVersions(ctx)
   end
 
   -- Use traditional nixhub.io workflow for regular package names
+  logger.info("Querying nixhub for package metadata...")
   local current_os = platform.normalize_os(RUNTIME.osType)
   local current_arch = RUNTIME.archType:lower()
 
@@ -52,9 +62,11 @@ function PLUGIN:BackendListVersions(ctx)
   -- This allows flake reference versions to work (e.g., nix:mytool@gitlab+group/repo#default)
   -- The actual validation happens during install when we have access to the version
   if not success or not data or not data.releases then
+    logger.warn("Package not found in nixhub")
     return { versions = {} }
   end
 
+  logger.info("Filtering compatible versions...")
   local versions = {}
   for _, release in ipairs(data.releases) do
     local release_version = release.version
@@ -66,6 +78,7 @@ function PLUGIN:BackendListVersions(ctx)
 
   -- For ls-remote, return empty list if no compatible versions found
   if #versions == 0 then
+    logger.warn("No compatible versions found for current platform")
     return { versions = {} }
   end
 
@@ -75,5 +88,6 @@ function PLUGIN:BackendListVersions(ctx)
     table.insert(reversed, versions[i])
   end
 
+  logger.done(string.format("Found %d compatible version(s)", #reversed))
   return { versions = reversed }
 end
