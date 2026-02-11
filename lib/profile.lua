@@ -232,13 +232,11 @@ end
 function M.install(flake_ref)
   logger.debug("Installing to default profile: " .. flake_ref)
 
-  -- Check if already installed in containerized environments
-  if shell.is_containerized() then
-    local existing_path, existing_index = M.find_store_path_for_flake(flake_ref)
-    if existing_path then
-      logger.debug("Package already installed in default profile")
-      return existing_path, existing_index
-    end
+  -- Check if package is already installed in the profile
+  local existing_path, existing_index = M.find_store_path_for_flake(flake_ref)
+  if existing_path then
+    logger.info("Package already installed in profile, skipping installation")
+    return existing_path, existing_index
   end
 
   -- Build nix profile install command (no --profile flag, uses default)
